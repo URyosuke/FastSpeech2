@@ -63,8 +63,8 @@ def spec2ceps(spec, order=None):
 
     # 2. スペクトルのポイント数（周波数ビン数？）を取得
     len_spec = spec.shape[0]
-    # 3. 対数スペクトル
-    specgLog = np.log(spec)
+    # 3. 対数スペクトル（数値安定性のため下限を設ける）
+    specgLog = np.log(np.maximum(spec, 1e-12))
 
     # 4. 対数スペクトルを左右対称に復元
     # specgLog = [specgLog; flip(specgLog(2:len - 1, :))]; (MATLAB)
@@ -206,7 +206,7 @@ def get_DF_from_wav(audio, _stft, order=32, K=2):
         K (int): 線形単回帰に用いる時間幅パラメータ（デフォルト: 2）
     
     Returns:
-        np.ndarray: DF時系列
+        np.ndarray: DF時系列（元のスペクトログラムと同じフレーム数）
     """
     # 1. 前処理：audioをclipしてFloatTensorに変換
     audio = torch.clip(torch.FloatTensor(audio).unsqueeze(0), -1, 1)
@@ -218,6 +218,9 @@ def get_DF_from_wav(audio, _stft, order=32, K=2):
     # 3. バッチ次元を削除してNumPy配列に変換
     magnitude = torch.squeeze(magnitude, 0).numpy().astype(np.float32)
     
+    # 元のフレーム数を記憶
+    original_frames = magnitude.shape[1]
+    
     # 4. spec2cepsによってケプストログラムに変換
     cepstrogram = spec2ceps(magnitude, order=order)
     
@@ -227,5 +230,16 @@ def get_DF_from_wav(audio, _stft, order=32, K=2):
     # 6. dCeps2normによってDF時系列を得る
     df_series = dCeps2norm(delta_cepstrogram, isPower=True)
     
-    # 7. DF時系列を返す
-    return df_series
+    # 7. DFは2*Kフレーム短くなるため、前後にKフレームずつパディング
+    # パディング方法：edge（端の値で埋める）を使用
+    df_series_padded = np.pad(df_series, (K, K), mode='edge')
+    
+    # 8. 元のフレーム数と一致するように調整（念のため）
+    if len(df_series_padded) > original_frames:
+        df_series_padded = df_series_padded[:original_frames]
+    elif len(df_series_padded) < original_frames:
+        # さらにパディングが必要な場合
+        padding_needed = original_frames - len(df_series_padded)
+        df_series_padded = np.pad(df_series_padded, (0, padding_needed), mode='edge')
+    
+    return df_series_padded
