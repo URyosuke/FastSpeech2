@@ -30,23 +30,28 @@ class Preprocessor:
             "phoneme_level",
             "frame_level",
         ]
-        assert config["preprocessing"]["df"]["feature"] in [
-            "phoneme_level",
-            "frame_level",
-        ]
         self.pitch_phoneme_averaging = (
             config["preprocessing"]["pitch"]["feature"] == "phoneme_level"
         )
         self.energy_phoneme_averaging = (
             config["preprocessing"]["energy"]["feature"] == "phoneme_level"
         )
-        self.df_phoneme_averaging = (
-            config["preprocessing"]["df"]["feature"] == "phoneme_level"
-        )
 
         self.pitch_normalization = config["preprocessing"]["pitch"]["normalization"]
         self.energy_normalization = config["preprocessing"]["energy"]["normalization"]
-        self.df_normalization = config["preprocessing"]["df"]["normalization"]
+        
+        # DFの有効/無効フラグ
+        self.df_enable = config["preprocessing"]["df"]["enable"]
+        
+        if self.df_enable:
+            assert config["preprocessing"]["df"]["feature"] in [
+                "phoneme_level",
+                "frame_level",
+            ]
+            self.df_phoneme_averaging = (
+                config["preprocessing"]["df"]["feature"] == "phoneme_level"
+            )
+            self.df_normalization = config["preprocessing"]["df"]["normalization"]
 
         self.STFT = Audio.stft.TacotronSTFT(
             config["preprocessing"]["stft"]["filter_length"],
@@ -58,26 +63,29 @@ class Preprocessor:
             config["preprocessing"]["mel"]["mel_fmax"],
         )
         
-        # DF計算用の別のSTFTインスタンス
-        self.STFT_DF = Audio.stft.STFT(
-            config["preprocessing"]["stft"]["filter_length"],
-            config["preprocessing"]["stft"]["hop_length"],
-            config["preprocessing"]["stft"]["win_length"],
-        )
+        # DF計算用の別のSTFTインスタンス（DFが有効な場合のみ）
+        if self.df_enable:
+            self.STFT_DF = Audio.stft.STFT(
+                config["preprocessing"]["stft"]["filter_length"],
+                config["preprocessing"]["stft"]["hop_length"],
+                config["preprocessing"]["stft"]["win_length"],
+            )
 
     def build_from_path(self):
         os.makedirs((os.path.join(self.out_dir, "mel")), exist_ok=True)
         os.makedirs((os.path.join(self.out_dir, "pitch")), exist_ok=True)
         os.makedirs((os.path.join(self.out_dir, "energy")), exist_ok=True)
         os.makedirs((os.path.join(self.out_dir, "duration")), exist_ok=True)
-        os.makedirs((os.path.join(self.out_dir, "df")), exist_ok=True)
+        if self.df_enable:
+            os.makedirs((os.path.join(self.out_dir, "df")), exist_ok=True)
 
         print("Processing Data ...")
         out = list()
         n_frames = 0
         pitch_scaler = StandardScaler()  # 標準化のためのスケーラー
         energy_scaler = StandardScaler()  # 標準化のためのスケーラー
-        df_scaler = StandardScaler()  # 標準化のためのスケーラー
+        if self.df_enable:
+            df_scaler = StandardScaler()  # 標準化のためのスケーラー
 
         # Compute pitch, energy, duration, and mel-spectrogram
         speakers = {}
@@ -92,18 +100,21 @@ class Preprocessor:
                     self.out_dir, "TextGrid", speaker, "{}.TextGrid".format(basename)  # {}はbasenameに置き換えられる
                 )
                 if os.path.exists(tg_path):
-                    ret = self.process_utterance(speaker, basename)  # pitch, energy, df, mel, durationを抽出
+                    ret = self.process_utterance(speaker, basename)
                     if ret is None:
                         continue
                     else:
-                        info, pitch, energy, df, n = ret # infoはメタデータ(basename, speaker, text, raw_text)、pitchはピッチ、energyはエネルギー、dfはDF、nはフレーム数
+                        if self.df_enable:
+                            info, pitch, energy, df, n = ret # infoはメタデータ、pitchはピッチ、energyはエネルギー、dfはDF、nはフレーム数
+                        else:
+                            info, pitch, energy, n = ret # DFなしの場合
                     out.append(info)
 
                 if len(pitch) > 0:
                     pitch_scaler.partial_fit(pitch.reshape((-1, 1)))
                 if len(energy) > 0:
                     energy_scaler.partial_fit(energy.reshape((-1, 1)))
-                if len(df) > 0:
+                if self.df_enable and len(df) > 0:
                     df_scaler.partial_fit(df.reshape((-1, 1)))
 
                 n_frames += n
@@ -123,12 +134,6 @@ class Preprocessor:
         else:
             energy_mean = 0
             energy_std = 1
-        if self.df_normalization:
-            df_mean = df_scaler.mean_[0]
-            df_std = df_scaler.scale_[0]
-        else:
-            df_mean = 0
-            df_std = 1
 
         pitch_min, pitch_max = self.normalize(
             os.path.join(self.out_dir, "pitch"), pitch_mean, pitch_std
@@ -136,9 +141,17 @@ class Preprocessor:
         energy_min, energy_max = self.normalize(
             os.path.join(self.out_dir, "energy"), energy_mean, energy_std
         )
-        df_min, df_max = self.normalize(
-            os.path.join(self.out_dir, "df"), df_mean, df_std
-        )
+        
+        if self.df_enable:
+            if self.df_normalization:
+                df_mean = df_scaler.mean_[0]
+                df_std = df_scaler.scale_[0]
+            else:
+                df_mean = 0
+                df_std = 1
+            df_min, df_max = self.normalize(
+                os.path.join(self.out_dir, "df"), df_mean, df_std
+            )
 
         # Save files
         with open(os.path.join(self.out_dir, "speakers.json"), "w") as f:
@@ -158,13 +171,14 @@ class Preprocessor:
                     float(energy_mean),
                     float(energy_std),
                 ],
-                "df": [
+            }
+            if self.df_enable:
+                stats["df"] = [
                     float(df_min),
                     float(df_max),
                     float(df_mean),
                     float(df_std),
-                ],
-            }
+                ]
             f.write(json.dumps(stats))
 
         print(
@@ -241,11 +255,12 @@ class Preprocessor:
         mel_spectrogram = mel_spectrogram[:, : sum(duration)]
         energy = energy[: sum(duration)]
         
-        # Compute Dynamic Feature (DF)
-        df = Audio.tools.get_DF_from_wav(wav, self.STFT_DF)
-        # DFはK=2の場合、フレーム数が4フレーム減るため、適切に調整
-        # mel_spectrogramのフレーム数に合わせて必要な部分を抽出
-        df = df[: sum(duration)]
+        # Compute Dynamic Feature (DF) - 有効な場合のみ
+        if self.df_enable:
+            df = Audio.tools.get_DF_from_wav(wav, self.STFT_DF)
+            # get_DF_from_wav内でパディングされ、元のスペクトログラムと同じフレーム数になる
+            # durationに合わせて必要な部分を抽出
+            df = df[: sum(duration)]
 
         if self.pitch_phoneme_averaging:
             # perform linear interpolation
@@ -279,8 +294,8 @@ class Preprocessor:
                 pos += d
             energy = energy[: len(duration)]
         
-        # DF phoneme-level averaging
-        if self.df_phoneme_averaging:
+        # DF phoneme-level averaging - 有効な場合のみ
+        if self.df_enable and self.df_phoneme_averaging:
             # Phoneme-level average
             pos = 0
             for i, d in enumerate(duration):
@@ -301,8 +316,9 @@ class Preprocessor:
         energy_filename = "{}-energy-{}.npy".format(speaker, basename)
         np.save(os.path.join(self.out_dir, "energy", energy_filename), energy)
 
-        df_filename = "{}-df-{}.npy".format(speaker, basename)
-        np.save(os.path.join(self.out_dir, "df", df_filename), df)
+        if self.df_enable:
+            df_filename = "{}-df-{}.npy".format(speaker, basename)
+            np.save(os.path.join(self.out_dir, "df", df_filename), df)
 
         mel_filename = "{}-mel-{}.npy".format(speaker, basename)
         np.save(
@@ -310,13 +326,21 @@ class Preprocessor:
             mel_spectrogram.T,
         )
 
-        return (
-            "|".join([basename, speaker, text, raw_text]),
-            self.remove_outlier(pitch),
-            self.remove_outlier(energy),
-            self.remove_outlier(df),
-            mel_spectrogram.shape[1],
-        )
+        if self.df_enable:
+            return (
+                "|".join([basename, speaker, text, raw_text]),
+                self.remove_outlier(pitch),
+                self.remove_outlier(energy),
+                self.remove_outlier(df),
+                mel_spectrogram.shape[1],
+            )
+        else:
+            return (
+                "|".join([basename, speaker, text, raw_text]),
+                self.remove_outlier(pitch),
+                self.remove_outlier(energy),
+                mel_spectrogram.shape[1],
+            )
 
     def get_alignment(self, tier):
         """

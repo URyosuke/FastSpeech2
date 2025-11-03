@@ -29,5 +29,6 @@ preprocessing:
     feature: "phoneme_level" # support 'phoneme_level' or 'frame_level'
     normalization: True
   df:
+    enable: True  # DFの計算を有効にするかどうか
     feature: "frame_level" # support 'phoneme_level' or 'frame_level'
     normalization: True
