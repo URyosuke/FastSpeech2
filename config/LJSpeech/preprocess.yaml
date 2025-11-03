@@ -28,3 +28,6 @@ preprocessing:
   energy:
     feature: "phoneme_level" # support 'phoneme_level' or 'frame_level'
     normalization: True
+  df:
+    feature: "frame_level" # support 'phoneme_level' or 'frame_level'
+    normalization: True

@@ -21,7 +21,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def main(args, configs):
     print("Prepare training ...")
 
-    preprocess_config, model_config, train_config = configs
+    preprocess_config, model_config, train_config = configs  # それぞれの設定の辞書を分割代入
 
     # Get dataset
     dataset = Dataset(
@@ -30,6 +30,7 @@ def main(args, configs):
     batch_size = train_config["optimizer"]["batch_size"]
     group_size = 4  # Set this larger than 1 to enable sorting in Dataset
     assert batch_size * group_size < len(dataset)
+    # データローダー(モデルにデータを供給する枠組み)の作成
     loader = DataLoader(
         dataset,
         batch_size=batch_size * group_size,
@@ -39,8 +40,8 @@ def main(args, configs):
 
     # Prepare model
     model, optimizer = get_model(args, configs, device, train=True)
-    model = nn.DataParallel(model)
-    num_param = get_param_num(model)
+    model = nn.DataParallel(model)  # モデルを複数のGPUに分散させる
+    num_param = get_param_num(model)  # モデルのパラメータ数を取得
     Loss = FastSpeech2Loss(preprocess_config, model_config).to(device)
     print("Number of FastSpeech2 Parameters:", num_param)
 

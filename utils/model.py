@@ -12,6 +12,7 @@ def get_model(args, configs, device, train=False):
     (preprocess_config, model_config, train_config) = configs
 
     model = FastSpeech2(preprocess_config, model_config).to(device)
+    # もしtrain.pyを実行するとき、--restore_stepオプションがあれば、そのステップのモデルを読み込む
     if args.restore_step:
         ckpt_path = os.path.join(
             train_config["path"]["ckpt_path"],
@@ -26,7 +27,7 @@ def get_model(args, configs, device, train=False):
         )
         if args.restore_step:
             scheduled_optim.load_state_dict(ckpt["optimizer"])
-        model.train()
+        model.train()  # pytorchのnn.Moduleのメソッド。モデルを訓練モードにする。
         return model, scheduled_optim
 
     model.eval()
@@ -35,7 +36,7 @@ def get_model(args, configs, device, train=False):
 
 
 def get_param_num(model):
-    num_param = sum(param.numel() for param in model.parameters())
+    num_param = sum(param.numel() for param in model.parameters())  # .parameters()nn.Moduleのメソッド。モデルのパラメータを取得。
     return num_param
 
 
