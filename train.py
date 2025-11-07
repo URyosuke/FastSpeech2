@@ -13,7 +13,13 @@ from utils.tools import to_device, log, synth_one_sample
 from model import FastSpeech2Loss
 from dataset import Dataset
 
+from utils.model import get_model_df
+from utils.tools import to_device_df, log_df, synth_one_sample_df
+from model import FastSpeech2LossDF
+from dataset import DatasetDF
+
 from evaluate import evaluate
+from evaluate import evaluate_df
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -21,11 +27,16 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def main(args, configs):
     print("Prepare training ...")
 
-    preprocess_config, model_config, train_config = configs  # それぞれの設定の辞書を分割代入
+    preprocess_config, model_config, train_config, use_df = configs  # それぞれの設定の辞書を分割代入
 
     # Get dataset
-    dataset = Dataset(
-        "train.txt", preprocess_config, train_config, sort=True, drop_last=True
+    if use_df:
+        dataset = DatasetDF(
+            "train.txt", preprocess_config, train_config, sort=True, drop_last=True
+        )
+    else:
+        dataset = Dataset(
+            "train.txt", preprocess_config, train_config, sort=True, drop_last=True
     )
     batch_size = train_config["optimizer"]["batch_size"]
     group_size = 4  # Set this larger than 1 to enable sorting in Dataset
@@ -39,10 +50,16 @@ def main(args, configs):
     )
 
     # Prepare model
-    model, optimizer = get_model(args, configs, device, train=True)
+    if use_df:
+        model, optimizer = get_model_df(args, configs, device, train=True)
+    else:
+        model, optimizer = get_model(args, configs, device, train=True)
     model = nn.DataParallel(model)  # モデルを複数のGPUに分散させる
     num_param = get_param_num(model)  # モデルのパラメータ数を取得
-    Loss = FastSpeech2Loss(preprocess_config, model_config).to(device)
+    if use_df:
+        Loss = FastSpeech2LossDF(preprocess_config, model_config).to(device)
+    else:
+        Loss = FastSpeech2Loss(preprocess_config, model_config).to(device)
     print("Number of FastSpeech2 Parameters:", num_param)
 
     # Load vocoder
@@ -100,8 +117,13 @@ def main(args, configs):
                 if step % log_step == 0:
                     losses = [l.item() for l in losses]
                     message1 = "Step {}/{}, ".format(step, total_step)
-                    message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}".format(
-                        *losses
+                    if use_df:
+                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}, DF Loss: {:.4f}".format(
+                            *losses
+                        )
+                    else:
+                        message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}".format(
+                            *losses
                     )
 
                     with open(os.path.join(train_log_path, "log.txt"), "a") as f:
@@ -112,37 +134,69 @@ def main(args, configs):
                     log(train_logger, step, losses=losses)
 
                 if step % synth_step == 0:
-                    fig, wav_reconstruction, wav_prediction, tag = synth_one_sample(
-                        batch,
-                        output,
-                        vocoder,
-                        model_config,
-                        preprocess_config,
-                    )
-                    log(
-                        train_logger,
-                        fig=fig,
-                        tag="Training/step_{}_{}".format(step, tag),
-                    )
-                    sampling_rate = preprocess_config["preprocessing"]["audio"][
-                        "sampling_rate"
-                    ]
-                    log(
-                        train_logger,
-                        audio=wav_reconstruction,
-                        sampling_rate=sampling_rate,
-                        tag="Training/step_{}_{}_reconstructed".format(step, tag),
-                    )
-                    log(
-                        train_logger,
-                        audio=wav_prediction,
-                        sampling_rate=sampling_rate,
-                        tag="Training/step_{}_{}_synthesized".format(step, tag),
-                    )
+                    if use_df:
+                        fig, wav_reconstruction, wav_prediction, tag = synth_one_sample_df(
+                            batch,
+                            output,
+                            vocoder,
+                            model_config,
+                            preprocess_config,
+                        )
+                        log_df(
+                            train_logger,
+                            fig=fig,
+                            tag="Training/step_{}_{}".format(step, tag),
+                        )
+                        sampling_rate = preprocess_config["preprocessing"]["audio"][
+                            "sampling_rate"
+                        ]
+                        log_df(
+                            train_logger,
+                            audio=wav_reconstruction,
+                            sampling_rate=sampling_rate,
+                            tag="Training/step_{}_{}_reconstructed".format(step, tag),
+                        )
+                        log_df(
+                            train_logger,
+                            audio=wav_prediction,
+                            sampling_rate=sampling_rate,
+                            tag="Training/step_{}_{}_synthesized".format(step, tag),
+                        )
+                    else:
+                        fig, wav_reconstruction, wav_prediction, tag = synth_one_sample(
+                            batch,
+                            output,
+                            vocoder,
+                            model_config,
+                            preprocess_config,
+                        )
+                        log(
+                            train_logger,
+                            fig=fig,
+                            tag="Training/step_{}_{}".format(step, tag),
+                        )
+                        sampling_rate = preprocess_config["preprocessing"]["audio"][
+                            "sampling_rate"
+                        ]
+                        log(
+                            train_logger,
+                            audio=wav_reconstruction,
+                            sampling_rate=sampling_rate,
+                            tag="Training/step_{}_{}_reconstructed".format(step, tag),
+                        )
+                        log(
+                            train_logger,
+                            audio=wav_prediction,
+                            sampling_rate=sampling_rate,
+                            tag="Training/step_{}_{}_synthesized".format(step, tag),
+                        )
 
                 if step % val_step == 0:
                     model.eval()
-                    message = evaluate(model, step, configs, val_logger, vocoder)
+                    if use_df:
+                        message = evaluate_df(model, step, configs, val_logger, vocoder)
+                    else:
+                        message = evaluate(model, step, configs, val_logger, vocoder)
                     with open(os.path.join(val_log_path, "log.txt"), "a") as f:
                         f.write(message + "\n")
                     outer_bar.write(message)
@@ -185,6 +239,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-t", "--train_config", type=str, required=True, help="path to train.yaml"
+    )
+    parser.add_argument(
+        "--use_df", type=bool, action="store_true", help="use dynamic feature"
     )
     args = parser.parse_args()
 
