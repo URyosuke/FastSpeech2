@@ -13,13 +13,13 @@ from utils.tools import to_device, log, synth_one_sample
 from model import FastSpeech2Loss
 from dataset import Dataset
 
-from utils.model import get_model_df
-from utils.tools import to_device_df, log_df, synth_one_sample_df
+from utils.model_df import get_model_df
+from utils.tools_df import to_device_df, log_df, synth_one_sample_df
 from model import FastSpeech2LossDF
-from dataset import DatasetDF
+from dataset_df import DatasetDF
 
 from evaluate import evaluate
-from evaluate import evaluate_df
+from evaluate_df import evaluate_df
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -27,7 +27,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def main(args, configs):
     print("Prepare training ...")
 
-    preprocess_config, model_config, train_config, use_df = configs  # それぞれの設定の辞書を分割代入
+    preprocess_config, model_config, train_config = configs  # それぞれの設定の辞書を分割代入
+    use_df = args.use_df
 
     # Get dataset
     if use_df:
@@ -94,7 +95,10 @@ def main(args, configs):
         inner_bar = tqdm(total=len(loader), desc="Epoch {}".format(epoch), position=1)
         for batchs in loader:
             for batch in batchs:
-                batch = to_device(batch, device)
+                if use_df:
+                    batch = to_device_df(batch, device)
+                else:
+                    batch = to_device(batch, device)
 
                 # Forward
                 output = model(*(batch[2:]))
@@ -241,7 +245,7 @@ if __name__ == "__main__":
         "-t", "--train_config", type=str, required=True, help="path to train.yaml"
     )
     parser.add_argument(
-        "--use_df", type=bool, action="store_true", help="use dynamic feature"
+        "--use_df", action="store_true", help="use dynamic feature"
     )
     args = parser.parse_args()
 
