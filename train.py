@@ -135,7 +135,10 @@ def main(args, configs):
 
                     outer_bar.write(message1 + message2)
 
-                    log(train_logger, step, losses=losses)
+                    if use_df:
+                        log_df(train_logger, step, losses=losses)
+                    else:
+                        log(train_logger, step, losses=losses)
 
                 if step % synth_step == 0:
                     if use_df:
