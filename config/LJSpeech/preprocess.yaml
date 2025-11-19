@@ -32,3 +32,4 @@ preprocessing:
     enable: True  # DFの計算を有効にするかどうか
     feature: "frame_level" # support 'phoneme_level' or 'frame_level'
     normalization: True
+    use_separate_plots: True

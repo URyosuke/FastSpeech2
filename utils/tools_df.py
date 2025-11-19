@@ -176,6 +176,81 @@ def synth_one_sample_df(targets, predictions, vocoder, model_config, preprocess_
     return fig, wav_reconstruction, wav_prediction, basename
 
 
+def synth_samples_df(targets, predictions, vocoder, model_config, preprocess_config, path):
+    """DF対応のsynth_samples関数"""
+
+    basenames = targets[0]
+    # use_dfフラグを確認（デフォルトはTrue）
+    use_df_separate = preprocess_config["preprocessing"].get("df", {}).get("use_separate_plots", True)
+    
+    for i in range(len(predictions[0])):
+        basename = basenames[i]
+        src_len = predictions[8][i].item()
+        mel_len = predictions[9][i].item()
+        mel_prediction = predictions[1][i, :mel_len].detach().transpose(0, 1)
+        duration = predictions[5][i, :src_len].detach().cpu().numpy()
+        
+        if preprocess_config["preprocessing"]["pitch"]["feature"] == "phoneme_level":
+            pitch = predictions[2][i, :src_len].detach().cpu().numpy()
+            pitch = expand(pitch, duration)
+        else:
+            pitch = predictions[2][i, :mel_len].detach().cpu().numpy()
+        
+        if preprocess_config["preprocessing"]["energy"]["feature"] == "phoneme_level":
+            energy = predictions[3][i, :src_len].detach().cpu().numpy()
+            energy = expand(energy, duration)
+        else:
+            energy = predictions[3][i, :mel_len].detach().cpu().numpy()
+        
+        if preprocess_config["preprocessing"]["df"]["feature"] == "phoneme_level":
+            df = predictions[10][i, :src_len].detach().cpu().numpy()
+            df = expand(df, duration)
+        else:
+            df = predictions[10][i, :mel_len].detach().cpu().numpy()
+
+        with open(
+            os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
+        ) as f:
+            stats = json.load(f)
+            stats = stats["pitch"] + stats["energy"][:2] + stats["df"][:2]
+
+        # use_df_separateがTrueの場合は別々のプロットを作成
+        if use_df_separate:
+            plot_mel_df_separate(
+                mel_prediction.cpu().numpy(),
+                pitch,
+                energy,
+                df,
+                stats,
+                "Synthetized Spectrogram",
+                path,
+                basename
+            )
+        else:
+            # 従来の方法（全て重ねたプロット）
+            fig = plot_mel_df(
+                [
+                    (mel_prediction.cpu().numpy(), pitch, energy, df),
+                ],
+                stats,
+                ["Synthetized Spectrogram"],
+            )
+            plt.savefig(os.path.join(path, "{}.png".format(basename)))
+            plt.close()
+
+    from utils.model_df import vocoder_infer
+
+    mel_predictions = predictions[1].transpose(1, 2)
+    lengths = predictions[9] * preprocess_config["preprocessing"]["stft"]["hop_length"]
+    wav_predictions = vocoder_infer(
+        mel_predictions, vocoder, model_config, preprocess_config, lengths=lengths
+    )
+
+    sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
+    for wav, basename in zip(wav_predictions, basenames):
+        wavfile.write(os.path.join(path, "{}.wav".format(basename)), sampling_rate, wav)
+
+
 def plot_mel_df(data, stats, titles):
     """DF対応のplot_mel関数"""
     fig, axes = plt.subplots(len(data), 1, squeeze=False, figsize=(12, 3 * len(data)))
@@ -227,14 +302,14 @@ def plot_mel_df(data, stats, titles):
         )
 
         ax3 = add_axis(fig, axes[i][0])
-        ax3.plot(df, color="green")
+        ax3.plot(df, color="deepskyblue")
         ax3.set_xlim(0, mel.shape[1])
         ax3.set_ylim(df_min, df_max)
-        ax3.set_ylabel("DF", color="green")
+        ax3.set_ylabel("DF", color="deepskyblue")
         ax3.yaxis.set_label_position("right")
         ax3.tick_params(
             labelsize="x-small",
-            colors="green",
+            colors="deepskyblue",
             bottom=False,
             labelbottom=False,
             left=False,
@@ -245,6 +320,91 @@ def plot_mel_df(data, stats, titles):
         ax3.spines['right'].set_position(('outward', 60))
 
     return fig
+
+
+def plot_mel_df_separate(mel, pitch, energy, df, stats, title, output_path, basename):
+    """F0、Energy、DFをそれぞれ別のメルスペクトログラムとして保存する関数"""
+    pitch_min, pitch_max, pitch_mean, pitch_std, energy_min, energy_max, df_min, df_max = stats
+    pitch_min = pitch_min * pitch_std + pitch_mean
+    pitch_max = pitch_max * pitch_std + pitch_mean
+    pitch = pitch * pitch_std + pitch_mean
+    
+    def add_axis(fig, old_ax):
+        ax = fig.add_axes(old_ax.get_position(), anchor="W")
+        ax.set_facecolor("None")
+        return ax
+    
+    # F0のプロット
+    fig_f0, ax_f0 = plt.subplots(1, 1, figsize=(12, 3))
+    ax_f0.imshow(mel, origin="lower")
+    ax_f0.set_aspect(2.5, adjustable="box")
+    ax_f0.set_ylim(0, mel.shape[0])
+    ax_f0.set_title(f"{title} - F0", fontsize="medium")
+    ax_f0.set_ylabel("Mel Frequency", fontsize="small")
+    ax_f0.tick_params(labelsize="x-small")
+    ax_f0.set_anchor("W")
+    
+    ax_f0_overlay = add_axis(fig_f0, ax_f0)
+    ax_f0_overlay.plot(pitch, color="tomato", linewidth=2)
+    ax_f0_overlay.set_xlim(0, mel.shape[1])
+    ax_f0_overlay.set_ylim(0, pitch_max)
+    ax_f0_overlay.set_ylabel("F0", color="tomato", fontsize="small")
+    ax_f0_overlay.yaxis.set_label_position("right")
+    ax_f0_overlay.yaxis.tick_right()
+    ax_f0_overlay.tick_params(
+        labelsize="x-small", colors="tomato", bottom=False, labelbottom=False
+    )
+    
+    plt.savefig(os.path.join(output_path, f"{basename}_f0.png"), bbox_inches='tight')
+    plt.close(fig_f0)
+    
+    # Energyのプロット
+    fig_energy, ax_energy = plt.subplots(1, 1, figsize=(12, 3))
+    ax_energy.imshow(mel, origin="lower")
+    ax_energy.set_aspect(2.5, adjustable="box")
+    ax_energy.set_ylim(0, mel.shape[0])
+    ax_energy.set_title(f"{title} - Energy", fontsize="medium")
+    ax_energy.set_ylabel("Mel Frequency", fontsize="small")
+    ax_energy.tick_params(labelsize="x-small")
+    ax_energy.set_anchor("W")
+    
+    ax_energy_overlay = add_axis(fig_energy, ax_energy)
+    ax_energy_overlay.plot(energy, color="darkviolet", linewidth=2)
+    ax_energy_overlay.set_xlim(0, mel.shape[1])
+    ax_energy_overlay.set_ylim(energy_min, energy_max)
+    ax_energy_overlay.set_ylabel("Energy", color="darkviolet", fontsize="small")
+    ax_energy_overlay.yaxis.set_label_position("right")
+    ax_energy_overlay.yaxis.tick_right()
+    ax_energy_overlay.tick_params(
+        labelsize="x-small", colors="darkviolet", bottom=False, labelbottom=False
+    )
+    
+    plt.savefig(os.path.join(output_path, f"{basename}_energy.png"), bbox_inches='tight')
+    plt.close(fig_energy)
+    
+    # DFのプロット
+    fig_df, ax_df = plt.subplots(1, 1, figsize=(12, 3))
+    ax_df.imshow(mel, origin="lower")
+    ax_df.set_aspect(2.5, adjustable="box")
+    ax_df.set_ylim(0, mel.shape[0])
+    ax_df.set_title(f"{title} - DF", fontsize="medium")
+    ax_df.set_ylabel("Mel Frequency", fontsize="small")
+    ax_df.tick_params(labelsize="x-small")
+    ax_df.set_anchor("W")
+    
+    ax_df_overlay = add_axis(fig_df, ax_df)
+    ax_df_overlay.plot(df, color="red", linewidth=2)
+    ax_df_overlay.set_xlim(0, mel.shape[1])
+    ax_df_overlay.set_ylim(df_min, df_max)
+    ax_df_overlay.set_ylabel("DF", color="red", fontsize="small")
+    ax_df_overlay.yaxis.set_label_position("right")
+    ax_df_overlay.yaxis.tick_right()
+    ax_df_overlay.tick_params(
+        labelsize="x-small", colors="red", bottom=False, labelbottom=False
+    )
+    
+    plt.savefig(os.path.join(output_path, f"{basename}_df.png"), bbox_inches='tight')
+    plt.close(fig_df)
 
 
 def pad_1D(inputs, PAD=0):
