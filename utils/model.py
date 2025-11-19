@@ -80,10 +80,12 @@ def vocoder_infer(mels, vocoder, model_config, preprocess_config, lengths=None):
         elif name == "HiFi-GAN":
             wavs = vocoder(mels).squeeze(1)
 
-    wavs = (
-        wavs.cpu().numpy()
-        * preprocess_config["preprocessing"]["audio"]["max_wav_value"]
-    ).astype("int16")
+    wavs = wavs.cpu().numpy()
+    
+    # クリッピング防止: 正規化してからint16に変換
+    max_wav_value = preprocess_config["preprocessing"]["audio"]["max_wav_value"]
+    wavs = np.clip(wavs, -1.0, 1.0)  # -1.0 ~ 1.0 にクリップ
+    wavs = (wavs * max_wav_value).astype("int16")
     wavs = [wav for wav in wavs]
 
     for i in range(len(mels)):
