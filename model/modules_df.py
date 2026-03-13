@@ -46,8 +46,9 @@ class VarianceAdaptorDF(nn.Module):
         assert energy_quantization in ["linear", "log"]
         assert df_quantization in ["linear", "log"]
         
+        stats_file = preprocess_config["preprocessing"]["df"].get("stats_file", "stats.json")
         with open(
-            os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
+            os.path.join(preprocess_config["path"]["preprocessed_path"], stats_file)
         ) as f:
             stats = json.load(f)
             pitch_min, pitch_max = stats["pitch"][:2]

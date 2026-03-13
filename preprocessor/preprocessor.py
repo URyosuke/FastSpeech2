@@ -14,13 +14,14 @@ import audio as Audio
 
 
 class Preprocessor:
-    def __init__(self, config):
+    def __init__(self, config, use_world=False):
         self.config = config
         self.in_dir = config["path"]["raw_path"]
         self.out_dir = config["path"]["preprocessed_path"]
         self.val_size = config["preprocessing"]["val_size"]
         self.sampling_rate = config["preprocessing"]["audio"]["sampling_rate"]
         self.hop_length = config["preprocessing"]["stft"]["hop_length"]
+        self.use_world = use_world
 
         assert config["preprocessing"]["pitch"]["feature"] in [
             "phoneme_level",
@@ -42,6 +43,11 @@ class Preprocessor:
         
         # DFの有効/無効フラグ
         self.df_enable = config["preprocessing"]["df"]["enable"]
+        # DF出力先と統計ファイルを切り替え（既存成果物を上書きしないため）
+        self.df_dir_name = "df_world" if (self.df_enable and self.use_world) else "df"
+        self.df_stats_filename = (
+            "stats_df_world.json" if (self.df_enable and self.use_world) else "stats.json"
+        )
         
         if self.df_enable:
             assert config["preprocessing"]["df"]["feature"] in [
@@ -65,8 +71,10 @@ class Preprocessor:
         
         # DF計算用の別のSTFTインスタンス（DFが有効な場合のみ）
         if self.df_enable:
+            # STFT版DFとPyWorld版DFのどちらでも使えるようFFTサイズを保持
+            self.filter_length = config["preprocessing"]["stft"]["filter_length"]
             self.STFT_DF = Audio.stft.STFT(
-                config["preprocessing"]["stft"]["filter_length"],
+                self.filter_length,
                 config["preprocessing"]["stft"]["hop_length"],
                 config["preprocessing"]["stft"]["win_length"],
             )
@@ -77,7 +85,7 @@ class Preprocessor:
         os.makedirs((os.path.join(self.out_dir, "energy")), exist_ok=True)
         os.makedirs((os.path.join(self.out_dir, "duration")), exist_ok=True)
         if self.df_enable:
-            os.makedirs((os.path.join(self.out_dir, "df")), exist_ok=True)
+            os.makedirs((os.path.join(self.out_dir, self.df_dir_name)), exist_ok=True)
 
         print("Processing Data ...")
         out = list()
@@ -150,36 +158,65 @@ class Preprocessor:
                 df_mean = 0
                 df_std = 1
             df_min, df_max = self.normalize(
-                os.path.join(self.out_dir, "df"), df_mean, df_std
+                os.path.join(self.out_dir, self.df_dir_name), df_mean, df_std
             )
 
         # Save files
         with open(os.path.join(self.out_dir, "speakers.json"), "w") as f:
             f.write(json.dumps(speakers))
 
-        with open(os.path.join(self.out_dir, "stats.json"), "w") as f:
-            stats = {
-                "pitch": [
-                    float(pitch_min),
-                    float(pitch_max),
-                    float(pitch_mean),
-                    float(pitch_std),
-                ],
-                "energy": [
-                    float(energy_min),
-                    float(energy_max),
-                    float(energy_mean),
-                    float(energy_std),
-                ],
-            }
-            if self.df_enable:
-                stats["df"] = [
-                    float(df_min),
-                    float(df_max),
-                    float(df_mean),
-                    float(df_std),
-                ]
-            f.write(json.dumps(stats))
+        # stats.jsonは既存実験を上書きしない方針：use_world時は存在すればスキップ
+        stats_path = os.path.join(self.out_dir, "stats.json")
+        should_write_stats = not (self.use_world and os.path.exists(stats_path))
+        if should_write_stats:
+            with open(stats_path, "w") as f:
+                stats = {
+                    "pitch": [
+                        float(pitch_min),
+                        float(pitch_max),
+                        float(pitch_mean),
+                        float(pitch_std),
+                    ],
+                    "energy": [
+                        float(energy_min),
+                        float(energy_max),
+                        float(energy_mean),
+                        float(energy_std),
+                    ],
+                }
+                if self.df_enable and not self.use_world:
+                    stats["df"] = [
+                        float(df_min),
+                        float(df_max),
+                        float(df_mean),
+                        float(df_std),
+                    ]
+                f.write(json.dumps(stats))
+
+        # PyWorld版DFの統計は別ファイルに保存して既存statsを汚さない
+        if self.df_enable and self.use_world:
+            with open(os.path.join(self.out_dir, self.df_stats_filename), "w") as f:
+                df_stats = {
+                    "pitch": [
+                        float(pitch_min),
+                        float(pitch_max),
+                        float(pitch_mean),
+                        float(pitch_std),
+                    ],
+                    "energy": [
+                        float(energy_min),
+                        float(energy_max),
+                        float(energy_mean),
+                        float(energy_std),
+                    ],
+                    "df": [
+                        float(df_min),
+                        float(df_max),
+                        float(df_mean),
+                        float(df_std),
+                    ]
+                }
+                f.write(json.dumps(df_stats))
 
         print(
             "Total time: {} hours".format(
@@ -187,16 +224,25 @@ class Preprocessor:
             )
         )
 
-        random.shuffle(out)
-        out = [r for r in out if r is not None]
-
-        # Write metadata
-        with open(os.path.join(self.out_dir, "train.txt"), "w", encoding="utf-8") as f:
-            for m in out[self.val_size :]:
-                f.write(m + "\n")
-        with open(os.path.join(self.out_dir, "val.txt"), "w", encoding="utf-8") as f:
-            for m in out[: self.val_size]:
-                f.write(m + "\n")
+        # Write metadata - 既存ファイルがある場合はスキップ
+        train_path = os.path.join(self.out_dir, "train.txt")
+        val_path = os.path.join(self.out_dir, "val.txt")
+        
+        should_write_split = not (os.path.exists(train_path) or os.path.exists(val_path))
+        
+        if should_write_split:
+            random.shuffle(out)
+            out = [r for r in out if r is not None]
+            
+            with open(train_path, "w", encoding="utf-8") as f:
+                for m in out[self.val_size :]:
+                    f.write(m + "\n")
+            with open(val_path, "w", encoding="utf-8") as f:
+                for m in out[: self.val_size]:
+                    f.write(m + "\n")
+        else:
+            print("train.txt/val.txt already exist, skipping to preserve train/val split")
+            out = [r for r in out if r is not None]
 
         return out
 
@@ -257,8 +303,16 @@ class Preprocessor:
         
         # Compute Dynamic Feature (DF) - 有効な場合のみ
         if self.df_enable:
-            df = Audio.tools.get_DF_from_wav(wav, self.STFT_DF)
-            # get_DF_from_wav内でパディングされ、元のスペクトログラムと同じフレーム数になる
+            if self.use_world:
+                df = Audio.tools.get_DF_from_wav_world(
+                    wav,
+                    self.sampling_rate,
+                    self.hop_length,
+                    self.filter_length,
+                )
+            else:
+                df = Audio.tools.get_DF_from_wav(wav, self.STFT_DF)
+            # get_DF_from_wav(_world) 内でパディングされ、元のスペクトログラムと同じフレーム数になる
             # durationに合わせて必要な部分を抽出
             df = df[: sum(duration)]
 
@@ -318,7 +372,7 @@ class Preprocessor:
 
         if self.df_enable:
             df_filename = "{}-df-{}.npy".format(speaker, basename)
-            np.save(os.path.join(self.out_dir, "df", df_filename), df)
+            np.save(os.path.join(self.out_dir, self.df_dir_name, df_filename), df)
 
         mel_filename = "{}-mel-{}.npy".format(speaker, basename)
         np.save(

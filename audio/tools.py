@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import pyworld as pw
 from scipy.io.wavfile import write
 
 from audio.audio_processing import griffin_lim
@@ -242,4 +243,52 @@ def get_DF_from_wav(audio, _stft, order=32, K=2):
         padding_needed = original_frames - len(df_series_padded)
         df_series_padded = np.pad(df_series_padded, (0, padding_needed), mode='edge')
     
+    return df_series_padded
+
+
+def get_DF_from_wav_world(audio, sampling_rate, hop_length, fft_size, order=32, K=2):
+    """
+    PyWorld（dio→stonemask→cheaptrick）でスペクトログラムを作成し、DF時系列を算出する。
+    STFT版と同じ形状・パディング仕様で返す。
+
+    Args:
+        audio (np.ndarray): 音声波形
+        sampling_rate (int): サンプリングレート
+        hop_length (int): ホップ長
+        fft_size (int): cheaptrickに渡すFFTサイズ（通常はSTFTのfilter_lengthと同じ）
+        order (int): リフタリング次数
+        K (int): Δケプストラム計算に使う時間幅
+
+    Returns:
+        np.ndarray: DF時系列（元のフレーム数と同じ長さにedgeパディング済み）
+    """
+    # PyWorldはfloat64想定
+    wav64 = np.asarray(audio, dtype=np.float64)
+
+    # 1. F0をdioで推定し、stonemaskで精緻化
+    f0, t = pw.dio(wav64, sampling_rate, frame_period=hop_length / sampling_rate * 1000)
+    f0 = pw.stonemask(wav64, f0, t, sampling_rate)
+
+    # 2. cheaptrickでスペクトルエンベロープ（frames x (fft_size/2+1)）
+    sp = pw.cheaptrick(wav64, f0, t, sampling_rate, fft_size=fft_size)
+
+    # 3. 形状を (freq, frame) に転置し既存パイプラインに合わせる
+    magnitude = sp.T.astype(np.float32)
+    original_frames = magnitude.shape[1]
+
+    # 4-6. 既存処理と同じ流れでDFを算出
+    cepstrogram = spec2ceps(magnitude, order=order)
+    delta_cepstrogram = ceps2dCeps(cepstrogram, K=K)
+    df_series = dCeps2norm(delta_cepstrogram, isPower=True)
+
+    # 7. フレーム数差分をedgeパディングで補正
+    df_series_padded = np.pad(df_series, (K, K), mode="edge")
+
+    # 8. 念のためフレーム数を合わせる
+    if len(df_series_padded) > original_frames:
+        df_series_padded = df_series_padded[:original_frames]
+    elif len(df_series_padded) < original_frames:
+        padding_needed = original_frames - len(df_series_padded)
+        df_series_padded = np.pad(df_series_padded, (0, padding_needed), mode="edge")
+
     return df_series_padded

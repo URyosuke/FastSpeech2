@@ -29,11 +29,26 @@ def main(args, configs):
 
     preprocess_config, model_config, train_config = configs  # それぞれの設定の辞書を分割代入
     use_df = args.use_df
+    use_world = getattr(args, "use_world", False)
+
+    # DF関連の参照パスをuse_worldに合わせる
+    if use_df and preprocess_config["preprocessing"]["df"]["enable"]:
+        if use_world:
+            preprocess_config["preprocessing"]["df"]["stats_file"] = "stats_df_world.json"
+            preprocess_config["preprocessing"]["df"]["dir_name"] = "df_world"
+        else:
+            preprocess_config["preprocessing"]["df"]["stats_file"] = "stats.json"
+            preprocess_config["preprocessing"]["df"]["dir_name"] = "df"
 
     # Get dataset
     if use_df:
         dataset = DatasetDF(
-            "train.txt", preprocess_config, train_config, sort=True, drop_last=True
+            "train.txt",
+            preprocess_config,
+            train_config,
+            sort=True,
+            drop_last=True,
+            use_world=use_world,
         )
     else:
         dataset = Dataset(
@@ -249,6 +264,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--use_df", action="store_true", help="use dynamic feature"
+    )
+    parser.add_argument(
+        "--use_world",
+        action="store_true",
+        help="use pyworld (dio+cheaptrick) DF instead of STFT DF",
     )
     args = parser.parse_args()
 

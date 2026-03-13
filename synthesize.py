@@ -199,6 +199,11 @@ if __name__ == "__main__":
         help="use dynamic feature model",
     )
     parser.add_argument(
+        "--use_world",
+        action="store_true",
+        help="use pyworld (dio+cheaptrick) DF instead of STFT DF",
+    )
+    parser.add_argument(
         "--df_control",
         type=float,
         default=1.0,
@@ -218,6 +223,15 @@ if __name__ == "__main__":
     )
     model_config = yaml.load(open(args.model_config, "r"), Loader=yaml.FullLoader)
     train_config = yaml.load(open(args.train_config, "r"), Loader=yaml.FullLoader)
+
+    # DF関連の参照パスをuse_worldに合わせる（必要なときのみ）
+    if args.use_df and preprocess_config["preprocessing"]["df"]["enable"]:
+        if args.use_world:
+            preprocess_config["preprocessing"]["df"]["stats_file"] = "stats_df_world.json"
+            preprocess_config["preprocessing"]["df"]["dir_name"] = "df_world"
+        else:
+            preprocess_config["preprocessing"]["df"]["stats_file"] = "stats.json"
+            preprocess_config["preprocessing"]["df"]["dir_name"] = "df"
     configs = (preprocess_config, model_config, train_config)
 
     # Get model

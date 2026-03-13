@@ -140,8 +140,9 @@ def synth_one_sample_df(targets, predictions, vocoder, model_config, preprocess_
     else:
         df = targets[12][0, :mel_len].detach().cpu().numpy()
 
+    stats_file = preprocess_config["preprocessing"]["df"].get("stats_file", "stats.json")
     with open(
-        os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
+        os.path.join(preprocess_config["path"]["preprocessed_path"], stats_file)
     ) as f:
         stats = json.load(f)
         stats = stats["pitch"] + stats["energy"][:2] + stats["df"][:2]
@@ -208,8 +209,9 @@ def synth_samples_df(targets, predictions, vocoder, model_config, preprocess_con
         else:
             df = predictions[10][i, :mel_len].detach().cpu().numpy()
 
+        stats_file = preprocess_config["preprocessing"]["df"].get("stats_file", "stats.json")
         with open(
-            os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
+            os.path.join(preprocess_config["path"]["preprocessed_path"], stats_file)
         ) as f:
             stats = json.load(f)
             stats = stats["pitch"] + stats["energy"][:2] + stats["df"][:2]

@@ -11,12 +11,14 @@ from utils.tools import pad_1D, pad_2D
 
 class DatasetDF(Dataset):
     def __init__(
-        self, filename, preprocess_config, train_config, sort=False, drop_last=False
+        self, filename, preprocess_config, train_config, sort=False, drop_last=False, use_world=False
     ):
         self.dataset_name = preprocess_config["dataset"]
         self.preprocessed_path = preprocess_config["path"]["preprocessed_path"]
         self.cleaners = preprocess_config["preprocessing"]["text"]["text_cleaners"]
         self.batch_size = train_config["optimizer"]["batch_size"]
+        df_dir_from_cfg = preprocess_config["preprocessing"]["df"].get("dir_name")
+        self.df_dir_name = df_dir_from_cfg if df_dir_from_cfg else ("df_world" if use_world else "df")
 
         self.basename, self.speaker, self.text, self.raw_text = self.process_meta(
             filename
@@ -78,7 +80,7 @@ class DatasetDF(Dataset):
         if self.df_enable:
             df_path = os.path.join(
                 self.preprocessed_path,
-                "df",
+                self.df_dir_name,
                 "{}-df-{}.npy".format(speaker, basename),
             )
             df = np.load(df_path)
