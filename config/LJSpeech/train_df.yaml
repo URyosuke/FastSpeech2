@@ -1,5 +1,5 @@
 path:
-  ckpt_path: "./output/ckpt-original/LJSpeech"
+  ckpt_path: "./output/ckpt/LJSpeech"
   log_path: "./output/log/LJSpeech"
   result_path: "./output/result/LJSpeech"
 optimizer:

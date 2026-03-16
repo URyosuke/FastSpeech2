@@ -56,7 +56,7 @@ class STFT(torch.nn.Module):
         self.num_samples = num_samples
 
         # similar to librosa, reflect-pad the input
-        input_data = input_data.view(num_batches, 1, num_samples)
+        input_data = input_data.view(num_batches, 1, num_samples) # view
         input_data = F.pad(
             input_data.unsqueeze(1),
             (int(self.filter_length / 2), int(self.filter_length / 2), 0, 0),

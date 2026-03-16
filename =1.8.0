@@ -1,0 +1,31 @@
+Looking in indexes: https://download.pytorch.org/whl/cu118
+Requirement already satisfied: torch in /home/uesugi/miniconda3/envs/fastspeech2/lib/python3.7/site-packages (1.7.0)
+Collecting torchvision
+  Downloading https://download.pytorch.org/whl/torchvision-0.2.0-py2.py3-none-any.whl (48 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 48.8/48.8 kB 96.0 kB/s eta 0:00:00
+Collecting torchaudio
+  Downloading https://download.pytorch.org/whl/torchaudio-0.9.1-cp37-cp37m-linux_x86_64.whl (1.9 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.9/1.9 MB 4.4 MB/s eta 0:00:00
+Requirement already satisfied: numpy in /home/uesugi/miniconda3/envs/fastspeech2/lib/python3.7/site-packages (from torch) (1.19.0)
+Requirement already satisfied: typing-extensions in /home/uesugi/miniconda3/envs/fastspeech2/lib/python3.7/site-packages (from torch) (4.7.1)
+Requirement already satisfied: future in /home/uesugi/miniconda3/envs/fastspeech2/lib/python3.7/site-packages (from torch) (1.0.0)
+Requirement already satisfied: dataclasses in /home/uesugi/miniconda3/envs/fastspeech2/lib/python3.7/site-packages (from torch) (0.6)
+Requirement already satisfied: six in /home/uesugi/miniconda3/envs/fastspeech2/lib/python3.7/site-packages (from torchvision) (1.17.0)
+Collecting pillow>=4.1.1
+  Downloading https://download.pytorch.org/whl/Pillow-9.3.0-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (3.2 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.2/3.2 MB 6.0 MB/s eta 0:00:00
+Collecting torchaudio
+  Downloading https://download.pytorch.org/whl/torchaudio-0.9.0-cp37-cp37m-linux_x86_64.whl (1.9 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.9/1.9 MB 3.7 MB/s eta 0:00:00
+  Downloading https://download.pytorch.org/whl/torchaudio-0.8.1-cp37-cp37m-linux_x86_64.whl (1.9 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.9/1.9 MB 1.4 MB/s eta 0:00:00
+  Downloading https://download.pytorch.org/whl/torchaudio-0.8.0-cp37-cp37m-linux_x86_64.whl (1.9 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.9/1.9 MB 1.6 MB/s eta 0:00:00
+  Downloading https://download.pytorch.org/whl/torchaudio-0.7.2-cp37-cp37m-linux_x86_64.whl (7.6 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 7.6/7.6 MB 11.7 MB/s eta 0:00:00
+  Downloading https://download.pytorch.org/whl/torchaudio-0.7.1-cp37-cp37m-linux_x86_64.whl (7.6 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 7.6/7.6 MB 14.7 MB/s eta 0:00:00
+  Downloading https://download.pytorch.org/whl/torchaudio-0.7.0-cp37-cp37m-linux_x86_64.whl (7.6 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 7.6/7.6 MB 11.7 MB/s eta 0:00:00
+Installing collected packages: pillow, torchvision, torchaudio
+Successfully installed pillow-9.3.0 torchaudio-0.7.0 torchvision-0.2.0

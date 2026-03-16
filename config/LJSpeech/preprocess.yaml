@@ -1,7 +1,7 @@
 dataset: "LJSpeech"
 
 path:
-  corpus_path: "/home/ming/Data/LJSpeech-1.1"
+  corpus_path: "./dataset/LJSpeech-1.1"
   lexicon_path: "lexicon/librispeech-lexicon.txt"
   raw_path: "./raw_data/LJSpeech"
   preprocessed_path: "./preprocessed_data/LJSpeech"
@@ -28,3 +28,8 @@ preprocessing:
   energy:
     feature: "phoneme_level" # support 'phoneme_level' or 'frame_level'
     normalization: True
+  df:
+    enable: True  # DFの計算を有効にするかどうか
+    feature: "frame_level" # support 'phoneme_level' or 'frame_level'
+    normalization: True
+    use_separate_plots: True

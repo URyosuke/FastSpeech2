@@ -1,8 +1,8 @@
-import argparse
+import argparse  # コマンドライン引数を処理するライブラリ
 
-import yaml
+import yaml  # YAMLファイルを読み込むライブラリ
 
-from preprocessor import ljspeech, aishell3, libritts
+from preprocessor import ljspeech, aishell3, libritts  # 前処理のための関数をインポート
 
 
 def main(config):

@@ -5,14 +5,16 @@ import torch
 import numpy as np
 
 import hifigan
-from model import FastSpeech2, ScheduledOptim
+from model.fastspeech2_df import FastSpeech2DF
+from model.optimizer import ScheduledOptim
 
 
-def get_model(args, configs, device, train=False):
+def get_model_df(args, configs, device, train=False):
+    """DF対応のモデル取得関数"""
     (preprocess_config, model_config, train_config) = configs
 
-    model = FastSpeech2(preprocess_config, model_config).to(device)
-    # もしtrain.pyを実行するとき、--restore_stepオプションがあれば、そのステップのモデルを読み込む
+    model = FastSpeech2DF(preprocess_config, model_config).to(device)
+    
     if args.restore_step:
         ckpt_path = os.path.join(
             train_config["path"]["ckpt_path"],
@@ -27,7 +29,7 @@ def get_model(args, configs, device, train=False):
         )
         if args.restore_step:
             scheduled_optim.load_state_dict(ckpt["optimizer"])
-        model.train()  # pytorchのnn.Moduleのメソッド。モデルを訓練モードにする。
+        model.train()
         return model, scheduled_optim
 
     model.eval()
@@ -36,11 +38,12 @@ def get_model(args, configs, device, train=False):
 
 
 def get_param_num(model):
-    num_param = sum(param.numel() for param in model.parameters())  # .parameters()nn.Moduleのメソッド。モデルのパラメータを取得。
+    num_param = sum(param.numel() for param in model.parameters())
     return num_param
 
 
 def get_vocoder(config, device):
+    """既存のget_vocoderと同じ"""
     name = config["vocoder"]["model"]
     speaker = config["vocoder"]["speaker"]
 
@@ -73,6 +76,7 @@ def get_vocoder(config, device):
 
 
 def vocoder_infer(mels, vocoder, model_config, preprocess_config, lengths=None):
+    """DF対応のvocoder_infer関数（クリッピング防止版）"""
     name = model_config["vocoder"]["model"]
     with torch.no_grad():
         if name == "MelGAN":

@@ -79,7 +79,7 @@ class Dataset(Dataset):
         ) as f:
             name = []
             speaker = []
-            text = []
+            text = []  # 音素のテキストデータ
             raw_text = []
             for line in f.readlines():
                 n, s, t, r = line.strip("\n").split("|")
@@ -123,8 +123,16 @@ class Dataset(Dataset):
             energies,
             durations,
         )
-
     def collate_fn(self, data):
+        """ 複数のデータを賢くグループ化してバッチにする関数 
+            入力: 64個のデータサンプル
+            ↓
+            [ソート] 長さが似たものを近くに配置
+            ↓
+            [分割] 16個ずつのバッチに分ける（4つできる）
+            ↓
+            出力: [バッチ1(16個), バッチ2(16個), バッチ3(16個), バッチ4(16個)]
+        """
         data_size = len(data)
 
         if self.sort:

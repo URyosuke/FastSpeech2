@@ -11,6 +11,8 @@ from pypinyin import pinyin, Style
 
 from utils.model import get_model, get_vocoder
 from utils.tools import to_device, synth_samples
+from utils.model_df import get_model_df
+from utils.tools_df import to_device_df, synth_samples_df
 from dataset import TextDataset
 from text import text_to_sequence
 
@@ -84,28 +86,51 @@ def preprocess_mandarin(text, preprocess_config):
     return np.array(sequence)
 
 
-def synthesize(model, step, configs, vocoder, batchs, control_values):
+def synthesize(model, step, configs, vocoder, batchs, control_values, use_df=False):
     preprocess_config, model_config, train_config = configs
-    pitch_control, energy_control, duration_control = control_values
+    if use_df:
+        pitch_control, energy_control, duration_control, df_control = control_values
+    else:
+        pitch_control, energy_control, duration_control = control_values
 
     for batch in batchs:
-        batch = to_device(batch, device)
+        if use_df:
+            batch = to_device_df(batch, device)
+        else:
+            batch = to_device(batch, device)
         with torch.no_grad():
             # Forward
-            output = model(
-                *(batch[2:]),
-                p_control=pitch_control,
-                e_control=energy_control,
-                d_control=duration_control
-            )
-            synth_samples(
-                batch,
-                output,
-                vocoder,
-                model_config,
-                preprocess_config,
-                train_config["path"]["result_path"],
-            )
+            if use_df:
+                output = model(
+                    *(batch[2:]),
+                    p_control=pitch_control,
+                    e_control=energy_control,
+                    d_control=duration_control,
+                    df_control=df_control
+                )
+                synth_samples_df(
+                    batch,
+                    output,
+                    vocoder,
+                    model_config,
+                    preprocess_config,
+                    train_config["path"]["result_path"],
+                )
+            else:
+                output = model(
+                    *(batch[2:]),
+                    p_control=pitch_control,
+                    e_control=energy_control,
+                    d_control=duration_control
+                )
+                synth_samples(
+                    batch,
+                    output,
+                    vocoder,
+                    model_config,
+                    preprocess_config,
+                    train_config["path"]["result_path"],
+                )
 
 
 if __name__ == "__main__":
@@ -168,6 +193,22 @@ if __name__ == "__main__":
         default=1.0,
         help="control the speed of the whole utterance, larger value for slower speaking rate",
     )
+    parser.add_argument(
+        "--use_df",
+        action="store_true",
+        help="use dynamic feature model",
+    )
+    parser.add_argument(
+        "--use_world",
+        action="store_true",
+        help="use pyworld (dio+cheaptrick) DF instead of STFT DF",
+    )
+    parser.add_argument(
+        "--df_control",
+        type=float,
+        default=1.0,
+        help="control the dynamic feature of the whole utterance, larger value for stronger DF",
+    )
     args = parser.parse_args()
 
     # Check source texts
@@ -182,10 +223,22 @@ if __name__ == "__main__":
     )
     model_config = yaml.load(open(args.model_config, "r"), Loader=yaml.FullLoader)
     train_config = yaml.load(open(args.train_config, "r"), Loader=yaml.FullLoader)
+
+    # DF関連の参照パスをuse_worldに合わせる（必要なときのみ）
+    if args.use_df and preprocess_config["preprocessing"]["df"]["enable"]:
+        if args.use_world:
+            preprocess_config["preprocessing"]["df"]["stats_file"] = "stats_df_world.json"
+            preprocess_config["preprocessing"]["df"]["dir_name"] = "df_world"
+        else:
+            preprocess_config["preprocessing"]["df"]["stats_file"] = "stats.json"
+            preprocess_config["preprocessing"]["df"]["dir_name"] = "df"
     configs = (preprocess_config, model_config, train_config)
 
     # Get model
-    model = get_model(args, configs, device, train=False)
+    if args.use_df:
+        model = get_model_df(args, configs, device, train=False)
+    else:
+        model = get_model(args, configs, device, train=False)
 
     # Load vocoder
     vocoder = get_vocoder(model_config, device)
@@ -209,6 +262,9 @@ if __name__ == "__main__":
         text_lens = np.array([len(texts[0])])
         batchs = [(ids, raw_texts, speakers, texts, text_lens, max(text_lens))]
 
-    control_values = args.pitch_control, args.energy_control, args.duration_control
+    if args.use_df:
+        control_values = args.pitch_control, args.energy_control, args.duration_control, args.df_control
+    else:
+        control_values = args.pitch_control, args.energy_control, args.duration_control
 
-    synthesize(model, args.restore_step, configs, vocoder, batchs, control_values)
+    synthesize(model, args.restore_step, configs, vocoder, batchs, control_values, use_df=args.use_df)
